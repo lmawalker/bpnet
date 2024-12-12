@@ -1,0 +1,140 @@
+# ==================================================================
+# model.gin
+# --------------------------------------------
+# model
+import bpnet
+import bpnet.models
+import bpnet.heads
+import bpnet.layers
+import bpnet.seqmodel
+import bpnet.trainers
+import bpnet.losses
+import bpnet.datasets
+import bpnet.metrics
+import bpnet.configurables
+
+# SeqModel
+train.model = @SeqModel()
+SeqModel.seqlen = %seq_width
+SeqModel.tasks = %tasks
+SeqModel.optimizer = @keras.optimizers.Adam()
+SeqModel.heads = [@ScalarHead()]  # Heads
+SeqModel.body = @DilatedConv1DBatchNormInput()
+SeqModel.input_shape = (%seq_width, %channel_shape)
+SeqModel.channel_shape = %channel_shape
+keras.optimizers.Adam.lr = %lr
+keras.optimizers.Adam.decay = %decay
+keras.optimizers.Adam.clipnorm = %clipnorm
+
+# - Body
+DilatedConv1DBatchNormInput.filters = %filters
+DilatedConv1DBatchNormInput.conv1_kernel_size = %first_conv_kernel_size
+DilatedConv1DBatchNormInput.n_dil_layers = %n_dil_layers
+DilatedConv1DBatchNormInput.padding = 'same'
+DilatedConv1DBatchNormInput.batchnorm = %batchnorm
+DilatedConv1DBatchNormInput.skip_type = 'residual'
+DilatedConv1DBatchNormInput.no_dna = %exclude_dna
+DilatedConv1DBatchNormInput.channel_shape = %channel_shape
+
+# DataLoader
+GuideActivityProfile.exclude_dna = %exclude_dna
+GuideActivityProfile.added_tracks_to_exclude = %added_tracks_to_exclude
+
+# - Heads
+
+#      - evaluate
+PeakPredictionProfileMetric.pos_min_threshold = 0.015
+PeakPredictionProfileMetric.neg_max_threshold = 0.005
+PeakPredictionProfileMetric.required_min_pos_counts = 2.5
+PeakPredictionProfileMetric.binsizes = [1, 10]
+# ---------------------
+#   - Total count prediction
+ScalarHead.target_name = '{task}/activity'
+ScalarHead.net = @GlobalAvgPoolFCN()
+GlobalAvgPoolFCN.n_tasks = 1
+GlobalAvgPoolFCN.n_splines = 0
+GlobalAvgPoolFCN.batchnorm = False
+ScalarHead.loss = 'mse'
+ScalarHead.loss_weight = 1
+ScalarHead.use_bias = False
+ScalarHead.metric = @RegressionMetrics()
+
+# --------------------------------------------
+# training
+train.num_workers = 6
+
+# --------------------------------------------
+# data
+# seq_width  -> specified from gin-bindings
+train.data = @bpnet_data()
+bpnet_data.peak_width = %seq_width
+bpnet_data.valid_chr = %valid_chr
+bpnet_data.test_chr = %test_chr
+bpnet_data.include_metadata = True
+bpnet_data.tasks = %tasks
+bpnet_data.exclude_chr = %exclude_chr
+bpnet_data.augment_interval = False
+bpnet_data.interval_augmentation_shift = 0
+bpnet_data.intervals_format = 'bed'
+bpnet_data.guide_data = True
+bpnet_data.dataspec = %dataspec
+bpnet_data.seq_width = %seq_width
+
+# Basic Training Setup
+train.train_epoch_frac = 1.0
+train.valid_epoch_frac = 1.0
+train.seed = 1
+train.epochs = 100
+train.batch_size = %batch_size
+train.eval_report = None
+train.tensorboard = False
+train.early_stop_patience = 15
+train.monitor = 'val_loss'
+train.min_delta = 1e-4
+
+# ==================Macros======================
+# specified from the CLI
+
+# Training
+lr = 0.00001
+decay = 0
+batch_size = 64
+clipnorm = 1.0
+
+# Architecture Changes
+n_dil_layers = 4
+first_conv_kernel_size = 21
+filters = 32
+tconv_kernel_size = 25
+
+# To augment the input sequence left and right
+augment_interval = False
+augmentation_shift = 0
+batchnorm = True
+
+# Chromosomes
+exclude_chr = []
+test_chr = []
+valid_chr = ["chr1"]
+
+# Control model input channels
+seq_width = 2000
+guide_data = True
+exclude_dna = False
+added_tracks_to_exclude = []
+channel_shape = 7
+
+#===== Misc=====
+# specifies path to jupyter notebook that can be executed
+
+# change if you want tensorboard output
+
+
+# ============================================
+# These parameters will be specified from the command line
+# (i.e. in `bpnet.cli.train.bpnet_train` function)
+# tracks_per_task = 2
+# dataspec = 'ChIP-nexus.dataspec.yml'
+# tasks = ['Oct4', 'Sox2', 'Nanog', 'Klf4']
+# use_bias = True/False - determined from dataspec file
+# num_added_tracks_in_dataspec - determined from dataspec file
